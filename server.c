@@ -10,29 +10,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-int main(int argc, char **argv) {
-  int parentfd; /* parent socket */
-  int childfd; /* child socket */
-  int portno; /* port to listen on */
-  socklen_t clientlen; /* byte size of client's address */
+int setup_server(int portno) {
+  int parentfd;
+  int optval;
   struct sockaddr_in serveraddr; /* server's addr */
-  struct sockaddr_in clientaddr; /* client addr */
-  struct hostent *hostp; /* client host info */
-  char buf[1024]; /* message buffer */
-  char *hostaddrp; /* dotted decimal host addr string */
-  int optval; /* flag value for setsockopt */
-  int n; /* message byte size */
-
-  /*
-   * check command line arguments
-   */
-  if (argc != 2) {
-    fprintf(stderr, "usage: %s <port>\n", argv[0]);
-    exit(1);
-  }
-  portno = atoi(argv[1]);
-
-  /*
+/*
    * socket: create the parent socket
    */
   parentfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -72,30 +54,15 @@ int main(int argc, char **argv) {
         fprintf(stderr, "ERROR on binding");
         exit(1);
      }
-  /*
-   * listen: make this socket ready to accept connection requests
-   */
-  if (listen(parentfd, 5) < 0){ /* allow 5 requests to queue up */
-      fprintf(stderr, "ERROR on listen");
-      exit(1);
-    }
+  return parentfd;
+}
 
-  /*
-   * main loop: wait for a connection request, echo input line,
-   * then close connection.
-   */
-  clientlen = sizeof(clientaddr);
-  while (1) {
-
-    /*
-     * accept: wait for a connection request
-     */
-    childfd = accept(parentfd, (struct sockaddr *) &clientaddr, &clientlen);
-    if (childfd < 0){
-          fprintf(stderr, "ERROR on accept");
-          exit(1);
-    }
-    /*
+void handle_request(int childfd, struct sockaddr_in clientaddr) {
+   struct hostent *hostp; /* client host info */
+   char *hostaddrp; /* dotted decimal host addr string */
+   char buf[1024]; /* message buffer */
+   int n; /* message byte size */
+   /*
      * gethostbyaddr: determine who sent the message
      */
     hostp = gethostbyaddr((const char *)&clientaddr.sin_addr.s_addr,
@@ -131,6 +98,54 @@ int main(int argc, char **argv) {
           fprintf(stderr, "ERROR writing to socket");
           exit(1);
     }
+}
+
+void run_server(int parentfd) {
+  struct sockaddr_in clientaddr; /* client addr */
+  int childfd; /* child socket */
+  socklen_t clientlen; /* byte size of client's address */
+   /*
+   * listen: make this socket ready to accept connection requests
+   */
+  if (listen(parentfd, 5) < 0){ /* allow 5 requests to queue up */
+      fprintf(stderr, "ERROR on listen");
+      exit(1);
+    }
+
+  /*
+   * main loop: wait for a connection request, echo input line,
+   * then close connection.
+   */
+  clientlen = sizeof(clientaddr);
+  while (1) {
+
+    /*
+     * accept: wait for a connection request
+     */
+    childfd = accept(parentfd, (struct sockaddr *) &clientaddr, &clientlen);
+    if (childfd < 0){
+          fprintf(stderr, "ERROR on accept");
+          exit(1);
+    }
+
+    handle_request(childfd, clientaddr);
     close(childfd);
   }
+}
+
+int main(int argc, char **argv) {
+  int parentfd; /* parent socket */
+  int portno; /* port to listen on */
+
+  /*
+   * check command line arguments
+   */
+  if (argc != 2) {
+    fprintf(stderr, "usage: %s <port>\n", argv[0]);
+    exit(1);
+  }
+  portno = atoi(argv[1]);
+
+  parentfd = setup_server(portno);
+  run_server(parentfd);
 }
